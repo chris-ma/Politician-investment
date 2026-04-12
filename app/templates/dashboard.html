@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AU Politicians Interests Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <header>
+    <h1>Australian Federal Politicians — Disclosed Interests</h1>
+    <p class="subtitle">
+      Property and shareholding disclosures from the official Parliament of Australia registers.
+      Data refreshed daily from public filings.
+    </p>
+  </header>
+
+  <!-- ── Summary Stats ── -->
+  <section class="stats-bar">
+    <div class="stat">
+      <span class="stat-value">{{ stats.total_politicians }}</span>
+      <span class="stat-label">Politicians tracked</span>
+    </div>
+    <div class="stat">
+      {% if stats.last_refresh_status %}
+        <span class="stat-value">
+          <span class="stat-badge {{ stats.last_refresh_status }}">
+            {{ stats.last_refresh_status }}
+          </span>
+        </span>
+      {% else %}
+        <span class="stat-value"><span class="stat-badge unknown">never run</span></span>
+      {% endif %}
+      <span class="stat-label">Last refresh status</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" style="font-size:1rem">
+        {{ stats.last_refresh_at | default("—") }}
+      </span>
+      <span class="stat-label">Last refreshed (UTC)</span>
+    </div>
+  </section>
+
+  <!-- ── Filters ── -->
+  <section class="filters">
+    <input type="search" id="search-name"
+           placeholder="Search name..."
+           aria-label="Search by name">
+    <select id="filter-chamber" aria-label="Filter by chamber">
+      <option value="">All chambers</option>
+      <option value="house">House of Representatives</option>
+      <option value="senate">Senate</option>
+    </select>
+    <select id="filter-party" aria-label="Filter by party">
+      <option value="">All parties</option>
+      <!-- populated by JS -->
+    </select>
+    <input type="search" id="search-electorate"
+           placeholder="Electorate / state..."
+           aria-label="Search by electorate or state">
+    <button id="clear-filters" type="button">Clear filters</button>
+    <span id="result-count"></span>
+  </section>
+
+  <!-- ── Main Table ── -->
+  <div class="table-wrapper">
+    {% if rows %}
+    <table id="politicians-table">
+      <thead>
+        <tr>
+          <th class="sortable" data-col="name">
+            Name <span class="sort-icon">⇅</span>
+          </th>
+          <th class="sortable" data-col="chamber">
+            Chamber <span class="sort-icon">⇅</span>
+          </th>
+          <th class="sortable" data-col="party">
+            Party <span class="sort-icon">⇅</span>
+          </th>
+          <th class="sortable" data-col="electorate">
+            Electorate / State <span class="sort-icon">⇅</span>
+          </th>
+          <th title="Self-declared properties">Self Props</th>
+          <th title="Self-declared shares">Self Shares</th>
+          <th title="Partner/spouse properties">Partner Props</th>
+          <th title="Partner/spouse shares">Partner Shares</th>
+          <th title="Dependent children properties">Children Props</th>
+          <th title="Dependent children shares">Children Shares</th>
+          <th class="sortable" data-col="updated">
+            Updated <span class="sort-icon">⇅</span>
+          </th>
+          <th>Links</th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        {% for row in rows %}
+        <tr
+          data-name="{{ row.name | lower }}"
+          data-chamber="{{ row.chamber }}"
+          data-party="{{ (row.party or '') | lower }}"
+          data-electorate="{{ (row.electorate_or_state or '') | lower }}"
+          data-updated="{{ row.updated_at_text or '' }}"
+        >
+          <td class="name-cell">{{ row.name }}</td>
+          <td>
+            {% if row.chamber == "house" %}
+              <span class="badge badge-house">House</span>
+            {% else %}
+              <span class="badge badge-senate">Senate</span>
+            {% endif %}
+          </td>
+          <td>{{ row.party or "—" }}</td>
+          <td>{{ row.electorate_or_state or "—" }}</td>
+          <td class="num-cell {% if row.self_properties %}has-value{% endif %}">
+            {{ row.self_properties if row.self_properties is not none else "—" }}
+          </td>
+          <td class="num-cell {% if row.self_shares %}has-value{% endif %}">
+            {{ row.self_shares if row.self_shares is not none else "—" }}
+          </td>
+          <td class="num-cell {% if row.partner_properties %}has-value{% endif %}">
+            {{ row.partner_properties if row.partner_properties is not none else "—" }}
+          </td>
+          <td class="num-cell {% if row.partner_shares %}has-value{% endif %}">
+            {{ row.partner_shares if row.partner_shares is not none else "—" }}
+          </td>
+          <td class="num-cell {% if row.children_properties %}has-value{% endif %}">
+            {{ row.children_properties if row.children_properties is not none else "—" }}
+          </td>
+          <td class="num-cell {% if row.children_shares %}has-value{% endif %}">
+            {{ row.children_shares if row.children_shares is not none else "—" }}
+          </td>
+          <td class="date-cell">{{ row.updated_at_text or "—" }}</td>
+          <td class="links-cell">
+            {% if row.aph_url %}
+              <a href="{{ row.aph_url }}" target="_blank" rel="noopener noreferrer"
+                 title="APH Profile for {{ row.name }}">APH</a>
+            {% endif %}
+            {% if row.register_pdf_url %}
+              <a href="{{ row.register_pdf_url }}" target="_blank" rel="noopener noreferrer"
+                 title="Register PDF for {{ row.name }}">PDF</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <h2>No data yet</h2>
+      <p>Run <code>python scripts/refresh_data.py</code> to populate the dashboard.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <p>
+      Data sourced from
+      <a href="https://www.aph.gov.au/Parliamentary_Business/Disclosures"
+         target="_blank" rel="noopener noreferrer">
+        Parliament of Australia — Disclosures
+      </a>.
+      Not affiliated with APH. For research and transparency purposes only.
+    </p>
+  </footer>
+
+  <script>
+  (function () {
+    "use strict";
+
+    var rows = Array.from(document.querySelectorAll("#table-body tr"));
+    if (!rows.length) return;
+
+    var searchName      = document.getElementById("search-name");
+    var filterChamber   = document.getElementById("filter-chamber");
+    var filterParty     = document.getElementById("filter-party");
+    var searchElectorate = document.getElementById("search-electorate");
+    var clearBtn        = document.getElementById("clear-filters");
+    var resultCount     = document.getElementById("result-count");
+
+    // ── Populate party dropdown from data ──────────────────────────────────
+    var parties = Array.from(
+      new Set(rows.map(function (r) { return r.dataset.party; }).filter(Boolean))
+    ).sort();
+    parties.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p.charAt(0).toUpperCase() + p.slice(1);
+      filterParty.appendChild(opt);
+    });
+
+    // ── Filter ─────────────────────────────────────────────────────────────
+    function applyFilters() {
+      var name   = searchName.value.toLowerCase().trim();
+      var chamber = filterChamber.value;
+      var party  = filterParty.value;
+      var elec   = searchElectorate.value.toLowerCase().trim();
+      var visible = 0;
+
+      rows.forEach(function (row) {
+        var show = (
+          (!name    || row.dataset.name.includes(name)) &&
+          (!chamber || row.dataset.chamber === chamber) &&
+          (!party   || row.dataset.party === party) &&
+          (!elec    || row.dataset.electorate.includes(elec))
+        );
+        row.style.display = show ? "" : "none";
+        if (show) visible++;
+      });
+
+      resultCount.textContent = "Showing " + visible + " of " + rows.length;
+    }
+
+    // ── Sort ───────────────────────────────────────────────────────────────
+    var sortCol = null;
+    var sortAsc = true;
+
+    document.querySelectorAll("th.sortable").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var col = th.dataset.col;
+        if (sortCol === col) {
+          sortAsc = !sortAsc;
+        } else {
+          sortCol = col;
+          sortAsc = true;
+        }
+
+        // Update sort icons
+        document.querySelectorAll("th.sortable .sort-icon").forEach(function (icon) {
+          icon.textContent = "⇅";
+        });
+        th.querySelector(".sort-icon").textContent = sortAsc ? "↑" : "↓";
+
+        var tbody = document.getElementById("table-body");
+        var sorted = rows.slice().sort(function (a, b) {
+          var av = (a.dataset[col] || "").toLowerCase();
+          var bv = (b.dataset[col] || "").toLowerCase();
+          if (av < bv) return sortAsc ? -1 : 1;
+          if (av > bv) return sortAsc ? 1 : -1;
+          return 0;
+        });
+        sorted.forEach(function (r) { tbody.appendChild(r); });
+        applyFilters();
+      });
+    });
+
+    // ── Event listeners ────────────────────────────────────────────────────
+    clearBtn.addEventListener("click", function () {
+      searchName.value = "";
+      filterChamber.value = "";
+      filterParty.value = "";
+      searchElectorate.value = "";
+      applyFilters();
+    });
+
+    [searchName, filterChamber, filterParty, searchElectorate].forEach(function (el) {
+      el.addEventListener("input", applyFilters);
+    });
+
+    // ── Initial render ─────────────────────────────────────────────────────
+    applyFilters();
+  })();
+  </script>
+</body>
+</html>
