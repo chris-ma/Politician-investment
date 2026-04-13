@@ -1,0 +1,46 @@
+name: Daily Data Refresh
+
+on:
+  schedule:
+    # 06:00 AEST / 20:00 UTC — runs once daily after the parliament day
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+    # Allow manual trigger from the Actions tab
+
+jobs:
+  refresh:
+    name: Scrape APH registers and update database
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Initialise database tables (idempotent)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/init_db.py
+
+      - name: Run daily data refresh
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LOG_LEVEL: INFO
+        run: python scripts/refresh_data.py
+
+      # The refresh script exits 0 even on partial failures (they are logged
+      # to the refresh_runs table).  This step surfaces a hard failure.
+      - name: Notify on job failure
+        if: failure()
+        run: |
+          echo "::error::Data refresh job failed — check the logs above."
+          echo "Check the refresh_runs table in the database for details."
+          exit 1

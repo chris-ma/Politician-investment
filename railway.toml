@@ -1,13 +1,31 @@
+# ── Railway deployment (alternative to Vercel) ────────────────────────────────
+#
+# This project is now deployed on Vercel (see vercel.json).
+# This file is kept as a reference if you want to host on Railway instead.
+#
+# Railway setup:
+#   Service 1 — Postgres (add via Railway dashboard)
+#   Service 2 — Web app (this repo, using the config below)
+#   Service 3 — Cron worker (same repo, command: see cron section below)
+#
+# Required environment variables in Railway:
+#   DATABASE_URL   → your Railway Postgres internal URL
+#   PORT           → injected automatically by Railway
+
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Railway injects $PORT; we use it here so the proxy can reach the app.
+# Railway injects $PORT; the proxy maps external 443 → $PORT internally.
 startCommand = "python scripts/init_db.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+
+# Cron worker service (deploy this repo a second time as a cron service):
+# command:  python scripts/init_db.py && python scripts/refresh_data.py
+# schedule: 0 20 * * *   (daily at 20:00 UTC)
 
 [environments.production]

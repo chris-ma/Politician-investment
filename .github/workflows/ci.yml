@@ -24,13 +24,14 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax (compile all modules)
-        run: python -m compileall app scripts -q
+        run: python -m compileall app scripts api -q
 
       - name: Verify imports are resolvable
         run: |
           python -c "from app.core.config import settings"
           python -c "from app.db.models import Politician, InterestsSummary, RefreshRun"
           python -c "from app.services.dashboard import get_dashboard_rows, get_summary_stats"
+          python -c "import api.index"
         env:
           # Provide a dummy DATABASE_URL so config import doesn't error
           DATABASE_URL: "postgresql://test:test@localhost:5432/test"
