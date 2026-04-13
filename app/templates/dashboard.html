@@ -17,6 +17,16 @@
     </p>
   </header>
 
+  <!-- ── Setup error banner ── -->
+  {% if setup_error %}
+  <div class="setup-banner">
+    <span class="setup-banner-icon">⚠</span>
+    <div>
+      <strong>Setup required:</strong> {{ setup_error }}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ── Summary Stats ── -->
   <section class="stats-bar">
     <div class="stat">
