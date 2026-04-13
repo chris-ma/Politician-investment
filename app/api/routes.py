@@ -1,7 +1,8 @@
+import datetime
 import logging
 import os
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,78 @@ _EMPTY_STATS = {
     "last_refresh_at": None,
     "last_refresh_message": None,
 }
+
+
+@router.get("/api/admin/seed")
+def admin_seed(token: str = "", db: Session = Depends(get_db)):
+    """
+    One-time seed endpoint — populates the DB with 48th Parliament politicians.
+
+    Protected by the ADMIN_SECRET environment variable.
+    Call it once in your browser:
+        https://your-app.vercel.app/api/admin/seed?token=YOUR_SECRET
+
+    Safe to call multiple times (upserts by slug).
+    """
+    if not settings.ADMIN_SECRET:
+        raise HTTPException(status_code=503, detail="ADMIN_SECRET is not configured on this server.")
+    if token != settings.ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid token.")
+    if db is None:
+        raise HTTPException(status_code=503, detail="DATABASE_URL is not configured.")
+
+    # Import seed data inline to avoid circular imports
+    import sys, os as _os
+    sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+    from scripts.seed_2025 import HOUSE_MEMBERS, SENATORS, make_slug, upsert_politician as _upsert
+    from app.db.models import InterestsSummary, RefreshRun
+
+    house_added = 0
+    senate_added = 0
+
+    try:
+        run = RefreshRun(
+            status="success",
+            started_at=datetime.datetime.utcnow(),
+            completed_at=datetime.datetime.utcnow(),
+            message="Seeded via /api/admin/seed from 48th Parliament 2025 data.",
+        )
+        db.add(run)
+
+        for name, electorate, state, party in HOUSE_MEMBERS:
+            p = _upsert(db, name, "house", electorate, party)
+            db.add(InterestsSummary(
+                politician_id=p.id,
+                source_type="pending",
+                notes="Interest data pending — trigger Daily Data Refresh to parse PDF filings.",
+                refreshed_at=datetime.datetime.utcnow(),
+            ))
+            house_added += 1
+
+        for name, state, party in SENATORS:
+            p = _upsert(db, name, "senate", state, party)
+            db.add(InterestsSummary(
+                politician_id=p.id,
+                source_type="pending",
+                notes="Interest data pending — trigger Daily Data Refresh to parse PDF filings.",
+                refreshed_at=datetime.datetime.utcnow(),
+            ))
+            senate_added += 1
+
+        db.commit()
+        log.info("Seed complete: %d house, %d senate", house_added, senate_added)
+        return JSONResponse({
+            "status": "ok",
+            "house_members": house_added,
+            "senators": senate_added,
+            "total": house_added + senate_added,
+            "next": "Visit / to view the dashboard. Trigger 'Daily Data Refresh' in GitHub Actions to populate interest counts.",
+        })
+
+    except Exception as exc:
+        db.rollback()
+        log.error("Seed failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Seed failed: {exc}")
 
 
 @router.get("/health")

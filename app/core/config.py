@@ -16,6 +16,9 @@ class Settings:
     )
     APH_BASE_URL: str = os.getenv("APH_BASE_URL", "https://www.aph.gov.au")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    # Secret token for the one-time /api/admin/seed endpoint.
+    # Set this in Vercel → Settings → Environment Variables.
+    ADMIN_SECRET: str = os.getenv("ADMIN_SECRET", "")
 
 
 settings = Settings()
