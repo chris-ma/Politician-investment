@@ -23,33 +23,9 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        from app.db.base import Base
-        from app.db.models import Politician, InterestsSummary, RefreshRun  # noqa: F401
-        from app.db.session import _get_engine, SessionLocal
-        from sqlalchemy import text
-
-        # 1. Create tables (no-op if they already exist)
-        Base.metadata.create_all(bind=_get_engine(), checkfirst=True)
-        log.info("Database tables verified/created on startup")
-
-        # 2. Auto-seed on first deploy — if politicians table is empty, populate it
-        #    immediately so the dashboard has data without any manual steps.
-        db = SessionLocal()
-        try:
-            count = db.execute(text("SELECT COUNT(*) FROM politicians")).scalar() or 0
-            if count == 0:
-                log.info("Politicians table is empty — running auto-seed...")
-                from scripts.seed_2025 import seed_db
-                house, senate = seed_db(db)
-                log.info("Auto-seed complete: %d house, %d senate", house, senate)
-        except Exception as exc:
-            log.warning("Auto-seed failed: %s", exc)
-        finally:
-            db.close()
-
-    except Exception as exc:
-        log.error("Startup init failed: %s", exc)
+    # DB init + auto-seed is handled lazily in get_db() via _ensure_db_ready().
+    # Vercel's Python runtime does not reliably fire ASGI lifespan events, so
+    # we keep this hook as a no-op to avoid duplicate work.
     yield
 
 

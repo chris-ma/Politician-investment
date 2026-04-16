@@ -45,6 +45,14 @@ def _ensure_db_ready():
     if _db_ready:
         return
     try:
+        import sys
+        import os as _os
+
+        # Ensure project root is on sys.path so scripts.seed_2025 is importable
+        _root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+
         from app.db.base import Base
         from app.db.models import Politician, InterestsSummary, RefreshRun  # noqa: F401
         from sqlalchemy import text
@@ -60,15 +68,17 @@ def _ensure_db_ready():
                 from scripts.seed_2025 import seed_db
                 house, senate = seed_db(db)
                 log.info("Auto-seed done: %d house, %d senate", house, senate)
+            else:
+                log.info("Politicians table has %d rows — skipping seed", count)
         except Exception as exc:
-            log.warning("Auto-seed skipped: %s", exc)
+            log.error("Auto-seed failed: %s", exc, exc_info=True)
             db.rollback()
         finally:
             db.close()
 
         _db_ready = True
     except Exception as exc:
-        log.error("DB init failed: %s", exc)
+        log.error("DB init failed: %s", exc, exc_info=True)
 
 
 def get_db():
