@@ -204,39 +204,50 @@ def upsert_politician(db, name: str, chamber: str, electorate_or_state: str, par
 def seed_db(db) -> tuple:
     """
     Seed the DB with 48th Parliament politicians using an existing session.
-    Returns (house_count, senate_count). Safe to call from get_db() init.
+    Uses bulk add_all + single flush/commit to minimise round-trips.
+    Returns (house_count, senate_count).
     """
-    from app.db.models import InterestsSummary, RefreshRun
+    from app.db.models import Politician, InterestsSummary, RefreshRun
 
-    run = RefreshRun(
-        status="success",
-        started_at=datetime.datetime.utcnow(),
-        completed_at=datetime.datetime.utcnow(),
-        message="Auto-seeded from 48th Parliament 2025 data on first startup.",
-    )
-    db.add(run)
+    now = datetime.datetime.utcnow()
+    note = "Interest data pending — trigger the Daily Data Refresh workflow to parse PDF filings."
 
-    house_count = 0
-    for name, electorate, state, party in HOUSE_MEMBERS:
-        p = upsert_politician(db, name, "house", electorate, party)
-        db.add(InterestsSummary(
-            politician_id=p.id,
-            source_type="pending",
-            notes="Interest data pending — trigger the Daily Data Refresh workflow to parse PDF filings.",
-            refreshed_at=datetime.datetime.utcnow(),
+    # Build all Politician objects
+    politicians = []
+    for name, electorate, _state, party in HOUSE_MEMBERS:
+        politicians.append(Politician(
+            slug=make_slug(name, "house"),
+            name=name, chamber="house",
+            electorate_or_state=electorate, party=party,
         ))
-        house_count += 1
-
-    senate_count = 0
     for name, state, party in SENATORS:
-        p = upsert_politician(db, name, "senate", state, party)
-        db.add(InterestsSummary(
+        politicians.append(Politician(
+            slug=make_slug(name, "senate"),
+            name=name, chamber="senate",
+            electorate_or_state=state, party=party,
+        ))
+
+    # One flush assigns all IDs
+    db.add_all(politicians)
+    db.flush()
+
+    # Build summaries using the now-populated IDs
+    db.add_all([
+        InterestsSummary(
             politician_id=p.id,
             source_type="pending",
-            notes="Interest data pending — trigger the Daily Data Refresh workflow to parse PDF filings.",
-            refreshed_at=datetime.datetime.utcnow(),
-        ))
-        senate_count += 1
+            notes=note,
+            refreshed_at=now,
+        )
+        for p in politicians
+    ])
+
+    db.add(RefreshRun(
+        status="success",
+        started_at=now,
+        completed_at=now,
+        message="Auto-seeded from 48th Parliament 2025 data on first startup.",
+    ))
 
     db.commit()
-    return house_count, senate_count
+    return len(HOUSE_MEMBERS), len(SENATORS)
