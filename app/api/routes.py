@@ -43,9 +43,7 @@ def admin_seed(token: str = "", db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail="DATABASE_URL is not configured.")
 
     # Import seed data inline to avoid circular imports
-    import sys, os as _os
-    sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
-    from scripts.seed_2025 import HOUSE_MEMBERS, SENATORS, make_slug, upsert_politician as _upsert
+    from app.seed_data import HOUSE_MEMBERS, SENATORS, upsert_politician as _upsert
     from app.db.models import InterestsSummary, RefreshRun
 
     house_added = 0
