@@ -176,6 +176,122 @@ def make_slug(name: str, chamber: str) -> str:
     return f"{chamber}-{clean}"
 
 
+# Investment data sourced from Open Politics 47th Parliament public category tables.
+# Keys: (name, chamber)  — chamber is lowercase "house" or "senate"
+# Values: dict with optional integer fields (missing key → None/unknown):
+#   self_re, self_sh        → self real-estate count, self shareholdings count
+#   partner_re, partner_sh  → partner equivalents (from profile_verified_counts where available)
+#   children_re, children_sh → children equivalents
+#   total                   → known_category_count_total
+POLITICIAN_INTERESTS = {
+    # ── Profile-verified breakdown (self / partner / children) ─────────────
+    ("Alex Hawke",        "house"): dict(self_re=1, self_sh=0, partner_re=1, partner_sh=0, children_re=0, children_sh=0, total=5),
+    ("Andrew Charlton",   "house"): dict(self_re=5, self_sh=21, partner_re=4, partner_sh=22, children_re=0, children_sh=0, total=19),
+    ("Anne Aly",          "house"): dict(self_re=2, self_sh=0, partner_re=1, partner_sh=1, children_re=0, children_sh=0, total=5),
+    ("Anthony Albanese",  "house"): dict(self_re=2, self_sh=0, partner_re=1, partner_sh=0, children_re=0, children_sh=0, total=6),
+    ("Karen Andrews",     "house"): dict(self_re=7, self_sh=5, partner_re=6, partner_sh=5, children_re=0, children_sh=0, total=41),
+    # ── Public category counts (aggregate mapped to self_*) ────────────────
+    ("Aaron Violi",           "house"):  dict(self_re=1,  self_sh=5,  total=11),
+    ("Alicia Payne",          "house"):  dict(self_re=2,  self_sh=2,  total=15),
+    ("Allegra Spender",       "house"):  dict(self_sh=18,             total=44),
+    ("Amanda Rishworth",      "house"):  dict(self_sh=13,             total=21),
+    ("Andrew Bragg",          "senate"): dict(self_re=1,              total=7),
+    ("Andrew Hastie",         "house"):  dict(self_re=2,              total=10),
+    ("Andrew Leigh",          "house"):  dict(self_re=2,  self_sh=2,  total=7),
+    ("Andrew Wallace",        "house"):  dict(self_sh=9,              total=21),
+    ("Andrew Wilkie",         "house"):  dict(self_re=4,  self_sh=1,  total=24),
+    ("Angus Taylor",          "house"):  dict(self_re=3,  self_sh=8,  total=29),
+    ("Anne Ruston",           "senate"): dict(self_re=1,              total=3),
+    ("Anne Urquhart",         "senate"): dict(total=5),
+    ("Anne Webster",          "house"):  dict(total=3),
+    ("Anthony Chisholm",      "senate"): dict(self_re=2,              total=2),
+    ("Barbara Pocock",        "senate"): dict(total=11),
+    ("Barnaby Joyce",         "house"):  dict(self_re=2,  self_sh=22, total=35),
+    ("Bob Katter",            "house"):  dict(self_re=1,              total=2),
+    ("Bridget McKenzie",      "senate"): dict(self_re=4,              total=4),
+    ("Carina Garland",        "house"):  dict(self_re=1,  self_sh=1,  total=5),
+    ("Carol Brown",           "senate"): dict(self_sh=1,              total=2),
+    ("Cassandra Fernando",    "house"):  dict(self_sh=6,              total=9),
+    ("Catherine King",        "house"):  dict(total=5),
+    ("Chris Bowen",           "house"):  dict(total=4),
+    ("Clare O'Neil",          "house"):  dict(self_re=2,              total=6),
+    ("Dan Tehan",             "house"):  dict(self_re=2,  self_sh=1,  total=12),
+    ("Daniel Mulino",         "house"):  dict(self_re=2,              total=2),
+    ("David Pocock",          "house"):  dict(self_re=2,              total=11),
+    ("David Pocock",          "senate"): dict(self_re=2,              total=11),
+    ("Dean Smith",            "senate"): dict(self_re=2,  self_sh=12, total=14),
+    ("Don Farrell",           "senate"): dict(self_re=3,              total=4),
+    ("Dorinda Cox",           "senate"): dict(total=2),
+    ("Ed Husic",              "house"):  dict(self_re=3,              total=3),
+    ("Elizabeth Watson-Brown","house"):  dict(total=2),
+    ("Emma McBride",          "house"):  dict(self_re=2,              total=3),
+    ("Fatima Payman",         "senate"): dict(self_re=2,              total=2),
+    ("Fiona Phillips",        "house"):  dict(total=4),
+    ("James Paterson",        "senate"): dict(total=1),
+    ("Jane Hume",             "senate"): dict(total=2),
+    ("Jason Clare",           "house"):  dict(total=3),
+    ("Jerome Laxale",         "house"):  dict(self_sh=17,             total=17),
+    ("Jess Walsh",            "senate"): dict(total=4),
+    ("Jim Chalmers",          "house"):  dict(self_re=2,              total=2),
+    ("Josh Burns",            "house"):  dict(self_re=2,              total=2),
+    ("Josh Wilson",           "house"):  dict(self_sh=10,             total=10),
+    ("Julian Leeser",         "house"):  dict(self_re=2,              total=2),
+    ("Julie Collins",         "house"):  dict(self_re=0,  self_sh=2,  total=10),
+    ("Kate Chaney",           "house"):  dict(total=2),
+    ("Kate Thwaites",         "house"):  dict(total=3),
+    ("Katy Gallagher",        "senate"): dict(total=3),
+    ("Kevin Hogan",           "house"):  dict(total=10),
+    ("Kristy McBain",         "house"):  dict(self_re=8,  self_sh=2,  total=20),
+    ("Larissa Waters",        "senate"): dict(total=4),
+    ("Lisa Chesters",         "house"):  dict(total=6),
+    ("Louise Miller-Frost",   "house"):  dict(self_re=8,              total=18),
+    ("Luke Gosling",          "house"):  dict(total=2),
+    ("Madeleine King",        "house"):  dict(self_re=7,  self_sh=1,  total=8),
+    ("Maria Kovacic",         "senate"): dict(self_sh=3,              total=13),
+    ("Marielle Smith",        "senate"): dict(total=5),
+    ("Marion Scrymgour",      "house"):  dict(total=2),
+    ("Mark Dreyfus",          "house"):  dict(self_sh=2,              total=5),
+    ("Matt Keogh",            "house"):  dict(self_re=1,              total=19),
+    ("Mehreen Faruqi",        "senate"): dict(total=6),
+    ("Meryl Swanson",         "house"):  dict(self_re=8,  self_sh=15, total=33),
+    ("Michael McCormack",     "house"):  dict(self_re=5,              total=9),
+    ("Michelle Landry",       "house"):  dict(self_sh=2,              total=2),
+    ("Michelle Rowland",      "house"):  dict(self_sh=2,              total=6),
+    ("Mike Freelander",       "house"):  dict(self_sh=13,             total=21),
+    ("Monique Ryan",          "house"):  dict(total=9),
+    ("Murray Watt",           "senate"): dict(self_re=1,              total=5),
+    ("Nick McKim",            "senate"): dict(self_sh=1,              total=1),
+    ("Nita Green",            "senate"): dict(self_re=2,              total=4),
+    ("Pat Conroy",            "house"):  dict(total=7),
+    ("Patrick Gorman",        "house"):  dict(self_re=1,              total=1),
+    ("Paul Scarr",            "senate"): dict(self_re=1,  self_sh=19, total=20),
+    ("Pauline Hanson",        "senate"): dict(self_re=2,  self_sh=3,  total=5),
+    ("Peter Whish-Wilson",    "senate"): dict(self_re=2,              total=4),
+    ("Phillip Thompson",      "house"):  dict(self_re=2,  self_sh=1,  total=7),
+    ("Raff Ciccone",          "senate"): dict(self_sh=1,              total=6),
+    ("Rick Wilson",           "house"):  dict(self_re=8,  self_sh=40, total=52),
+    ("Rob Mitchell",          "house"):  dict(self_re=8,              total=11),
+    ("Ross Cadell",           "senate"): dict(self_re=2,  self_sh=1,  total=3),
+    ("Sarah Hanson-Young",    "senate"): dict(self_re=1,              total=2),
+    ("Sarah Henderson",       "senate"): dict(self_re=3,              total=14),
+    ("Scott Buchholz",        "house"):  dict(self_re=4,  self_sh=3,  total=23),
+    ("Sharon Claydon",        "house"):  dict(self_re=2,              total=2),
+    ("Steve Georganas",       "house"):  dict(self_re=4,              total=9),
+    ("Susan McDonald",        "senate"): dict(self_re=2,  self_sh=2,  total=5),
+    ("Sussan Ley",            "house"):  dict(self_re=4,              total=4),
+    ("Tammy Tyrrell",         "senate"): dict(self_re=1,              total=1),
+    ("Tanya Plibersek",       "house"):  dict(self_re=7,              total=15),
+    ("Ted O'Brien",           "house"):  dict(self_re=3,              total=21),
+    ("Tim Ayres",             "senate"): dict(self_re=2,              total=6),
+    ("Tim Wilson",            "house"):  dict(self_re=4,  self_sh=13, total=22),
+    ("Tony Burke",            "house"):  dict(self_re=11,             total=11),
+    ("Tony Sheldon",          "senate"): dict(self_sh=1,              total=1),
+    ("Tony Zappia",           "house"):  dict(self_re=5,  self_sh=4,  total=11),
+    ("Zali Steggall",         "house"):  dict(self_re=4,  self_sh=2,  total=11),
+    ("Zaneta Mascarenhas",    "house"):  dict(self_sh=3,              total=9),
+}
+
+
 def upsert_politician(db, name: str, chamber: str, electorate_or_state: str, party: str):
     from sqlalchemy.exc import IntegrityError
     from app.db.models import Politician
@@ -210,43 +326,50 @@ def seed_db(db) -> tuple:
     from app.db.models import Politician, InterestsSummary, RefreshRun
 
     now = datetime.datetime.utcnow()
-    note = "Interest data pending — trigger the Daily Data Refresh workflow to parse PDF filings."
 
-    # Build all Politician objects
-    politicians = []
+    # Build all Politician objects (name stored so we can look up interests)
+    politicians = []   # list of (Politician, name, chamber)
     for name, electorate, _state, party in HOUSE_MEMBERS:
-        politicians.append(Politician(
-            slug=make_slug(name, "house"),
-            name=name, chamber="house",
-            electorate_or_state=electorate, party=party,
-        ))
+        p = Politician(slug=make_slug(name, "house"), name=name, chamber="house",
+                       electorate_or_state=electorate, party=party)
+        politicians.append((p, name, "house"))
     for name, state, party in SENATORS:
-        politicians.append(Politician(
-            slug=make_slug(name, "senate"),
-            name=name, chamber="senate",
-            electorate_or_state=state, party=party,
-        ))
+        p = Politician(slug=make_slug(name, "senate"), name=name, chamber="senate",
+                       electorate_or_state=state, party=party)
+        politicians.append((p, name, "senate"))
 
     # One flush assigns all IDs
-    db.add_all(politicians)
+    db.add_all([p for p, _, _ in politicians])
     db.flush()
 
-    # Build summaries using the now-populated IDs
-    db.add_all([
-        InterestsSummary(
+    summaries = []
+    for p, name, chamber in politicians:
+        d = POLITICIAN_INTERESTS.get((name, chamber), {})
+        has_data = bool(d)
+        summaries.append(InterestsSummary(
             politician_id=p.id,
-            source_type="pending",
-            notes=note,
+            source_type="open_politics" if has_data else "pending",
+            self_properties=d.get("self_re"),
+            self_shares=d.get("self_sh"),
+            partner_properties=d.get("partner_re"),
+            partner_shares=d.get("partner_sh"),
+            children_properties=d.get("children_re"),
+            children_shares=d.get("children_sh"),
+            total_interests=d.get("total"),
+            notes=(
+                "Source: Open Politics 47th Parliament public disclosures (openpolitics.au)."
+                if has_data else
+                "Interest data not yet available in public sources."
+            ),
             refreshed_at=now,
-        )
-        for p in politicians
-    ])
+        ))
+    db.add_all(summaries)
 
     db.add(RefreshRun(
         status="success",
         started_at=now,
         completed_at=now,
-        message="Auto-seeded from 48th Parliament 2025 data on first startup.",
+        message="Seeded 48th Parliament politicians with Open Politics 47th Parliament investment data.",
     ))
 
     db.commit()
