@@ -197,31 +197,38 @@ SENATORS = [
 
 
 def upsert_politician(db, name: str, chamber: str, electorate_or_state: str, party: str) -> Politician:
+    from sqlalchemy.exc import IntegrityError
     slug = make_slug(name, chamber)
     p = db.query(Politician).filter_by(slug=slug).first()
     if p is None:
         p = Politician(slug=slug, chamber=chamber)
         db.add(p)
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            p = db.query(Politician).filter_by(slug=slug).first()
     p.name = name
     p.chamber = chamber
     p.electorate_or_state = electorate_or_state
     p.party = party
-    p.aph_url = None         # populated by refresh_data.py
+    p.aph_url = None
     p.register_pdf_url = None
     p.updated_at_text = None
     db.flush()
     return p
 
 
-def seed() -> None:
-    db = SessionLocal()
-
-    # Record as a special refresh run
+def seed_db(db) -> tuple[int, int]:
+    """
+    Seed the database with 48th Parliament politicians using an existing session.
+    Returns (house_count, senate_count). Safe to call from the FastAPI lifespan.
+    """
     run = RefreshRun(
         status="success",
         started_at=datetime.datetime.utcnow(),
         completed_at=datetime.datetime.utcnow(),
-        message="Seeded from hardcoded 48th Parliament data (2025). Run refresh_data.py to add interest counts.",
+        message="Auto-seeded from 48th Parliament 2025 data on first startup.",
     )
     db.add(run)
 
@@ -230,33 +237,37 @@ def seed() -> None:
 
     for name, electorate, state, party in HOUSE_MEMBERS:
         p = upsert_politician(db, name, "house", electorate, party)
-        # Create a placeholder summary so the dashboard shows the row
-        summary = InterestsSummary(
+        db.add(InterestsSummary(
             politician_id=p.id,
             source_type="pending",
-            notes="Interest data pending — run scripts/refresh_data.py to parse PDF filings.",
+            notes="Interest data pending — trigger the Daily Data Refresh workflow to parse PDF filings.",
             refreshed_at=datetime.datetime.utcnow(),
-        )
-        db.add(summary)
+        ))
         house_count += 1
 
     for name, state, party in SENATORS:
         p = upsert_politician(db, name, "senate", state, party)
-        summary = InterestsSummary(
+        db.add(InterestsSummary(
             politician_id=p.id,
             source_type="pending",
-            notes="Interest data pending — run scripts/refresh_data.py to parse PDF filings.",
+            notes="Interest data pending — trigger the Daily Data Refresh workflow to parse PDF filings.",
             refreshed_at=datetime.datetime.utcnow(),
-        )
-        db.add(summary)
+        ))
         senate_count += 1
 
     db.commit()
-    db.close()
+    return house_count, senate_count
 
-    log.info("Seeded %d House members and %d Senators (%d total).",
-             house_count, senate_count, house_count + senate_count)
-    log.info("Run scripts/refresh_data.py to fetch PDF links and parse interest data.")
+
+def seed() -> None:
+    """Standalone seed — creates its own DB session. Use for CLI / GitHub Actions."""
+    db = SessionLocal()
+    try:
+        house_count, senate_count = seed_db(db)
+        log.info("Seeded %d House members and %d Senators (%d total).",
+                 house_count, senate_count, house_count + senate_count)
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
