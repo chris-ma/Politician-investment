@@ -42,39 +42,54 @@ def admin_seed(token: str = "", db: Session = Depends(get_db)):
     if db is None:
         raise HTTPException(status_code=503, detail="DATABASE_URL is not configured.")
 
-    # Import seed data inline to avoid circular imports
-    from app.seed_data import HOUSE_MEMBERS, SENATORS, upsert_politician as _upsert
+    from app.seed_data import HOUSE_MEMBERS, SENATORS, upsert_politician as _upsert, POLITICIAN_INTERESTS
     from app.db.models import InterestsSummary, RefreshRun
 
+    now = datetime.datetime.utcnow()
     house_added = 0
     senate_added = 0
 
     try:
-        run = RefreshRun(
+        db.add(RefreshRun(
             status="success",
-            started_at=datetime.datetime.utcnow(),
-            completed_at=datetime.datetime.utcnow(),
-            message="Seeded via /api/admin/seed from 48th Parliament 2025 data.",
-        )
-        db.add(run)
+            started_at=now,
+            completed_at=now,
+            message="Seeded via /api/admin/seed with Open Politics 47th Parliament investment data.",
+        ))
 
         for name, electorate, state, party in HOUSE_MEMBERS:
             p = _upsert(db, name, "house", electorate, party)
+            d = POLITICIAN_INTERESTS.get((name, "house"), {})
             db.add(InterestsSummary(
                 politician_id=p.id,
-                source_type="pending",
-                notes="Interest data pending — trigger Daily Data Refresh to parse PDF filings.",
-                refreshed_at=datetime.datetime.utcnow(),
+                source_type="open_politics" if d else "pending",
+                self_properties=d.get("self_re"),
+                self_shares=d.get("self_sh"),
+                partner_properties=d.get("partner_re"),
+                partner_shares=d.get("partner_sh"),
+                children_properties=d.get("children_re"),
+                children_shares=d.get("children_sh"),
+                total_interests=d.get("total"),
+                notes="Source: Open Politics 47th Parliament (openpolitics.au)." if d else "No public data found.",
+                refreshed_at=now,
             ))
             house_added += 1
 
         for name, state, party in SENATORS:
             p = _upsert(db, name, "senate", state, party)
+            d = POLITICIAN_INTERESTS.get((name, "senate"), {})
             db.add(InterestsSummary(
                 politician_id=p.id,
-                source_type="pending",
-                notes="Interest data pending — trigger Daily Data Refresh to parse PDF filings.",
-                refreshed_at=datetime.datetime.utcnow(),
+                source_type="open_politics" if d else "pending",
+                self_properties=d.get("self_re"),
+                self_shares=d.get("self_sh"),
+                partner_properties=d.get("partner_re"),
+                partner_shares=d.get("partner_sh"),
+                children_properties=d.get("children_re"),
+                children_shares=d.get("children_sh"),
+                total_interests=d.get("total"),
+                notes="Source: Open Politics 47th Parliament (openpolitics.au)." if d else "No public data found.",
+                refreshed_at=now,
             ))
             senate_added += 1
 
@@ -85,7 +100,6 @@ def admin_seed(token: str = "", db: Session = Depends(get_db)):
             "house_members": house_added,
             "senators": senate_added,
             "total": house_added + senate_added,
-            "next": "Visit / to view the dashboard. Trigger 'Daily Data Refresh' in GitHub Actions to populate interest counts.",
         })
 
     except Exception as exc:
