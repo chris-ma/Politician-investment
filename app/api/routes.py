@@ -139,6 +139,12 @@ def dashboard_page(request: Request, db: Session = Depends(get_db)):
     # ── Database available ──────────────────────────────────────────────────
     try:
         rows = get_dashboard_rows(db)
+        if not rows:
+            # Tables exist but are empty — seed inline on first visit
+            log.info("No politicians found — seeding 48th Parliament data…")
+            from app.seed_data import seed_db
+            seed_db(db)
+            rows = get_dashboard_rows(db)
         stats = get_summary_stats(db)
         setup_error = None
     except Exception as exc:
