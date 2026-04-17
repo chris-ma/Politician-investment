@@ -42,63 +42,66 @@ def admin_seed(token: str = "", db: Session = Depends(get_db)):
     if db is None:
         raise HTTPException(status_code=503, detail="DATABASE_URL is not configured.")
 
-    from app.seed_data import HOUSE_MEMBERS, SENATORS, upsert_politician as _upsert, POLITICIAN_INTERESTS
-    from app.db.models import InterestsSummary, RefreshRun
+    from app.seed_data import HOUSE_MEMBERS, SENATORS, make_slug, POLITICIAN_INTERESTS
+    from app.db.models import Politician, InterestsSummary, RefreshRun
 
     now = datetime.datetime.utcnow()
-    house_added = 0
-    senate_added = 0
 
     try:
+        # Build full politician list
+        all_pols = (
+            [(name, "house", loc, party) for name, loc, _s, party in HOUSE_MEMBERS] +
+            [(name, "senate", state, party) for name, state, party in SENATORS]
+        )
+
+        # One query — fetch all existing politicians by slug
+        existing = {p.slug: p for p in db.query(Politician).all()}
+
+        # Insert any missing politicians in bulk
+        missing = []
+        for name, chamber, loc, party in all_pols:
+            slug = make_slug(name, chamber)
+            if slug not in existing:
+                p = Politician(slug=slug, name=name, chamber=chamber,
+                               electorate_or_state=loc, party=party)
+                missing.append(p)
+        if missing:
+            db.add_all(missing)
+            db.flush()  # single flush to assign IDs
+            for p in missing:
+                existing[p.slug] = p
+
+        # Bulk-insert one InterestsSummary per politician
+        summaries = []
+        for name, chamber, _loc, _party in all_pols:
+            p = existing.get(make_slug(name, chamber))
+            if not p:
+                continue
+            d = POLITICIAN_INTERESTS.get((name, chamber), {})
+            summaries.append(InterestsSummary(
+                politician_id=p.id,
+                source_type="open_politics" if d else "pending",
+                self_properties=d.get("self_re"),
+                self_shares=d.get("self_sh"),
+                partner_properties=d.get("partner_re"),
+                partner_shares=d.get("partner_sh"),
+                children_properties=d.get("children_re"),
+                children_shares=d.get("children_sh"),
+                total_interests=d.get("total"),
+                notes="Source: Open Politics 47th Parliament (openpolitics.au)." if d else "No public data found.",
+                refreshed_at=now,
+            ))
+        db.add_all(summaries)
         db.add(RefreshRun(
-            status="success",
-            started_at=now,
-            completed_at=now,
+            status="success", started_at=now, completed_at=now,
             message="Seeded via /api/admin/seed with Open Politics 47th Parliament investment data.",
         ))
-
-        for name, electorate, state, party in HOUSE_MEMBERS:
-            p = _upsert(db, name, "house", electorate, party)
-            d = POLITICIAN_INTERESTS.get((name, "house"), {})
-            db.add(InterestsSummary(
-                politician_id=p.id,
-                source_type="open_politics" if d else "pending",
-                self_properties=d.get("self_re"),
-                self_shares=d.get("self_sh"),
-                partner_properties=d.get("partner_re"),
-                partner_shares=d.get("partner_sh"),
-                children_properties=d.get("children_re"),
-                children_shares=d.get("children_sh"),
-                total_interests=d.get("total"),
-                notes="Source: Open Politics 47th Parliament (openpolitics.au)." if d else "No public data found.",
-                refreshed_at=now,
-            ))
-            house_added += 1
-
-        for name, state, party in SENATORS:
-            p = _upsert(db, name, "senate", state, party)
-            d = POLITICIAN_INTERESTS.get((name, "senate"), {})
-            db.add(InterestsSummary(
-                politician_id=p.id,
-                source_type="open_politics" if d else "pending",
-                self_properties=d.get("self_re"),
-                self_shares=d.get("self_sh"),
-                partner_properties=d.get("partner_re"),
-                partner_shares=d.get("partner_sh"),
-                children_properties=d.get("children_re"),
-                children_shares=d.get("children_sh"),
-                total_interests=d.get("total"),
-                notes="Source: Open Politics 47th Parliament (openpolitics.au)." if d else "No public data found.",
-                refreshed_at=now,
-            ))
-            senate_added += 1
-
         db.commit()
-        log.info("Seed complete: %d house, %d senate", house_added, senate_added)
+        log.info("Seed complete: %d summaries inserted", len(summaries))
         return JSONResponse({
             "status": "ok",
-            "house_members": house_added,
-            "senators": senate_added,
+            "house_members": len(HOUSE_MEMBERS),
+            "senators": len(SENATORS),
             "total": house_added + senate_added,
         })
 
