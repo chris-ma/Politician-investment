@@ -374,3 +374,50 @@ def seed_db(db) -> tuple:
 
     db.commit()
     return len(HOUSE_MEMBERS), len(SENATORS)
+
+
+def apply_investment_data(db) -> int:
+    """
+    Insert fresh InterestsSummary rows with Open Politics data for all existing politicians.
+    Does NOT require the politicians table to be empty — safe to call at any time.
+    Returns the number of new summary rows inserted.
+    """
+    from app.db.models import Politician, InterestsSummary, RefreshRun
+    from sqlalchemy import text
+
+    now = datetime.datetime.utcnow()
+
+    politicians = db.query(Politician).all()
+    summaries = []
+    for p in politicians:
+        d = POLITICIAN_INTERESTS.get((p.name, p.chamber), {})
+        summaries.append(InterestsSummary(
+            politician_id=p.id,
+            source_type="open_politics" if d else "pending",
+            self_properties=d.get("self_re"),
+            self_shares=d.get("self_sh"),
+            partner_properties=d.get("partner_re"),
+            partner_shares=d.get("partner_sh"),
+            children_properties=d.get("children_re"),
+            children_shares=d.get("children_sh"),
+            total_interests=d.get("total"),
+            notes=(
+                "Source: Open Politics 47th Parliament public disclosures (openpolitics.au)."
+                if d else
+                "Interest data not yet available in public sources."
+            ),
+            refreshed_at=now,
+        ))
+
+    if summaries:
+        db.add_all(summaries)
+        db.add(RefreshRun(
+            status="success",
+            started_at=now,
+            completed_at=now,
+            message="Applied Open Politics 47th Parliament investment data to existing politicians.",
+        ))
+        db.commit()
+
+    log.info("apply_investment_data: inserted %d summary rows", len(summaries))
+    return len(summaries)

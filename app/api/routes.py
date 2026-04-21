@@ -102,7 +102,7 @@ def admin_seed(token: str = "", db: Session = Depends(get_db)):
             "status": "ok",
             "house_members": len(HOUSE_MEMBERS),
             "senators": len(SENATORS),
-            "total": house_added + senate_added,
+            "total": len(summaries),
         })
 
     except Exception as exc:
@@ -161,6 +161,12 @@ def dashboard_page(request: Request, db: Session = Depends(get_db)):
             log.info("No politicians found — seeding 48th Parliament data…")
             from app.seed_data import seed_db
             seed_db(db)
+            rows = get_dashboard_rows(db)
+        elif not any(r.get("total_interests") is not None for r in rows):
+            # Politicians exist but all have null investment data — apply it now
+            log.info("Politicians present but no investment data — applying Open Politics data…")
+            from app.seed_data import apply_investment_data
+            apply_investment_data(db)
             rows = get_dashboard_rows(db)
         stats = get_summary_stats(db)
         setup_error = None
