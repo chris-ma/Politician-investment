@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import _get_engine
 
 # Import models so Base.metadata is populated
 from app.db.models import Politician, InterestsSummary, RefreshRun  # noqa: F401
@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 
 
 def init_db() -> None:
+    engine = _get_engine()
     log.info("Connecting to database: %s", engine.url)
     Base.metadata.create_all(bind=engine, checkfirst=True)
     log.info(
